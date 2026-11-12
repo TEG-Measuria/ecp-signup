@@ -1,0 +1,24 @@
+/* Only what the canvas cannot express. Never restyle: change the canvas instead. */
+.pg{min-height:100vh;min-height:100dvh}
+.pg.land{min-height:100vh;min-height:100dvh}
+h1:focus{outline:none}
+a[role=button]{cursor:pointer}
+a[aria-disabled=true]{pointer-events:none}
+.sigcanvas{position:absolute;left:0;top:0;width:100%;height:100%;border-radius:10px;touch-action:none;cursor:crosshair}
+.pg.busy a,.pg.busy input,.pg.busy select{pointer-events:none}
+select.in{appearance:auto}
+#boot{font-family:system-ui,sans-serif;padding:40px;color:#55605D}
+
+/* Landscape tablet only (the canvas .land layout). These tighten spacing or constrain height; type sizes stay as the board has them. */
+@media (min-width:900px){
+  /* M1: five staff names, and the "After a change" message, fit 1180x720 with no page scroll */
+  .land .mstk{gap:12px !important}
+  .land .pnl2{row-gap:6px !important}
+  /* P2 "Full terms open": the terms scroll inside their panel; Accept and Back stay on screen */
+  .pg.land.terms-open{height:100vh;height:100dvh;min-height:0}
+  .land.terms-open .main.abc{min-height:0;overflow:hidden}
+  .land.terms-open .main.abc{grid-template-rows:auto minmax(0,1fr)}
+  .land.terms-open .gc{min-height:0;align-self:stretch}
+  .land.terms-open .gc>.box{display:flex;flex-direction:column;min-height:0;flex:1 1 auto;overflow:hidden}
+  .land.terms-open #fullterms{overflow-y:auto;min-height:0;flex:1 1 auto;overscroll-behavior:contain}
+}
