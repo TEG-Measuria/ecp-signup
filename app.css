@@ -23,5 +23,6 @@ select.in{appearance:auto}
   .land.terms-open #fullterms{overflow-y:auto;min-height:0;flex:1 1 auto;overscroll-behavior:contain}
 }
 
-/* Generic wordmark on the sign-in screens, before a practice code is accepted */
-.top .wm{font-family:'Cormorant Garamond',Georgia,serif;font-weight:700;font-size:26px;letter-spacing:.02em;color:var(--ink)}
+/* The Eyecare Group logo on the sign-in screens, before a practice code is accepted (Vik, 12 Nov 2026) */
+.top img.teg{width:140px}
+@media (max-width:600px){.top img.teg{width:110px}}

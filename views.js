@@ -19,7 +19,7 @@ function top(S, { staff = false, right = '', mgr = false, label = '' } = {}) {
   const p = pr(S) || {};
   // Branding only after a code is accepted (Vik, 12 Nov 2026): the sign-in screens stay generic.
   const bp = S.practice || (S.mgr && S.mgr.practice) || null;
-  const logo = bp && bp.logo ? `<img src="${esc(bp.logo)}" alt="${esc(bp.name)}">` : '<span class="wm">Eyecare Plan</span>';
+  const logo = bp && bp.logo ? `<img src="${esc(bp.logo)}" alt="${esc(bp.name)}">` : '<img class="teg" src="assets/teg-logo.png" alt="The Eyecare Group">';
   let s = `<header class="top">${logo}${right}</header>`;
   if (staff) s = `<div class="staffbar"><span>Staff only · ${esc(p.short)}</span><a href="#/s1" data-act="signout">Sign out</a></div>${s}`;
   if (mgr) s = `<div class="staffbar"><span>${esc(label)}</span><a href="#/s1" data-act="mgrout">Sign out</a></div>${s}`;
