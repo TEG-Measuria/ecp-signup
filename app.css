@@ -23,6 +23,5 @@ select.in{appearance:auto}
   .land.terms-open #fullterms{overflow-y:auto;min-height:0;flex:1 1 auto;overscroll-behavior:contain}
 }
 
-/* The Eyecare Group logo on the sign-in screens, before a practice code is accepted (Vik, 12 Nov 2026) */
-.top img.teg{width:140px}
-@media (max-width:600px){.top img.teg{width:110px}}
+/* Sign-in screens before a practice code: no logo (Vik, 13 Nov 2026); the empty span keeps the header height */
+.top .nologo{display:block;height:32px}
