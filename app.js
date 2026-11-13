@@ -18,7 +18,9 @@ const ls = {
 const rand = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
 let device = ls.get('ecp_device');
 if (!device) { device = rand(); ls.set('ecp_device', device); }
-let pcode = (Q.get('p') || ls.get('ecp_p') || 'cg').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) || 'cg';
+// A practice's own address always opens that practice (plan.kings-eyecare.co.uk -> Kings, plan.culverandglass.co.uk -> C&G).
+const HOSTS = { 'plan.kings-eyecare.co.uk': 'ko', 'plan.culverandglass.co.uk': 'cg' };
+let pcode = (HOSTS[location.hostname] || Q.get('p') || ls.get('ecp_p') || 'cg').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) || 'cg';
 ls.set('ecp_p', pcode);
 
 const blankPt = () => ({ optix: '', staffId: '', staffName: '', plan: '', name: '', u16: false, parent: '', addr1: '', town: '', postcode: '', mobile: '', email: '', email2: '', no_email: false, ticked: false, tickedAt: null, sigMethod: 'draw', strokes: [], typed: '', termsAt: null, prevRef: null });
@@ -316,6 +318,8 @@ const ACT = {
     setBusy(true);
     try {
       const r = await call('tablet-login', { code: u.pin, device });
+      const own = HOSTS[location.hostname];
+      if (own && r.practice && r.practice.code !== own) { setBusy(false); u.pin = ''; u.bad = true; u.msg = `That code is for ${r.practice.name || 'another practice'}. Use this practice's own code.`; render({ focusId: 'pin' }); return; }
       setBusy(false); setSession(r); u.pin = ''; go('s2');
     } catch (e) {
       setBusy(false); u.pin = '';
