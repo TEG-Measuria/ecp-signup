@@ -45,6 +45,7 @@ async function api(route, body, kind = 'tablet') {
 function setSession(r) {
   S.session = r.session; S.expires = Date.parse(r.expires_at) || 0;
   S.practice = r.practice; S.staff = r.staff || []; S.terms = r.terms || S.terms;
+  if (r.practice && r.practice.code) { pcode = r.practice.code; ls.set('ecp_p', pcode); } // the tablet remembers the practice it signed in to
   ls.set('ecp_session', r.session); ls.set('ecp_exp', String(S.expires));
 }
 function wipePatient() {
