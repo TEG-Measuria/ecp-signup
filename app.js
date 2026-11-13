@@ -512,8 +512,18 @@ const ACT = {
     try { const r = await api('staff-add', { name: l.name.trim() }, 'manager'); setBusy(false); S.ui.data.staff = r.staff; l.name = ''; render({ focusId: 'nn' }); }
     catch (e) { setBusy(false); if (!e.handled) { l.err = e.message; render({ focusId: 'nn' }); } }
   },
-  async staffhide(id) {
-    try { const r = await api('staff-hide', { staff_id: id }, 'manager'); S.ui.data.staff = r.staff; await loadM1(); } catch (e) { if (!e.handled) { S.ui.list.err = e.message; render(); } }
+  // one tap asks first; the name only comes off on "Yes, take off" (Vik 13 Nov: it was too easy to remove everyone)
+  staffhide(id) { S.ui.list.ask = id; S.ui.list.err = ''; render(); },
+  staffkeep() { S.ui.list.ask = null; render(); },
+  async staffhideyes(id) {
+    const l = S.ui.list; setBusy(true);
+    try { const r = await api('staff-hide', { staff_id: id }, 'manager'); setBusy(false); const gone = (S.ui.data.staff || []).find((x) => x.id === id); l.ask = null; l.msg = gone ? `${gone.name} is off the tablet. You can put them back below.` : ''; S.ui.data.staff = r.staff; await loadM1(); }
+    catch (e) { setBusy(false); if (!e.handled) { l.ask = null; l.err = e.message; render(); } }
+  },
+  async staffshow(id) {
+    const l = S.ui.list, h = ((S.ui.data && S.ui.data.hidden) || []).find((x) => x.id === id); if (!h) return; setBusy(true);
+    try { const r = await api('staff-add', { name: h.name }, 'manager'); setBusy(false); l.msg = `${h.name} is back on the tablet.`; S.ui.data.staff = r.staff; await loadM1(); }
+    catch (e) { setBusy(false); if (!e.handled) { l.err = e.message; render(); } }
   },
   // ---- M2
   async search() {

@@ -361,8 +361,11 @@ ${d.paid ? `<div class="err" role="alert">${esc(month)} payroll has already been
   if (u.list && d) {
     const act = (d.staff || []).filter((s) => s.active);
     list = `<section class="box pnl2" aria-label="Staff list" style="display: flex; flex-direction: column; gap: 12px"><h2>Staff list</h2><p style="margin: 0">These names appear on the tablet when a sign-up starts.</p>
-${act.map((n) => `<div class="sumr"><span>${esc(n.name)}</span>${a('stop', 'staffhide', 'Stop showing on the tablet', '', n.id)}</div>`).join('')}
-${d.former && d.former.length ? `<p class="sub" style="margin: 0">Former staff (past sign-ups still counted): ${esc(d.former.join(', '))}</p>` : ''}
+${u.list.msg ? `<div class="alert ok" role="status">${esc(u.list.msg)}</div>` : ''}
+${act.map((n) => u.list.ask === n.id
+      ? `<div class="box" role="alertdialog" aria-label="Take ${esc(n.name)} off the tablet" style="display: flex; flex-direction: column; gap: 10px; padding: 14px"><b>Take ${esc(n.name)} off the tablet?</b><span>They will no longer be offered when a sign-up starts. Their past sign-ups still count, and you can put them back.</span><div class="pair">${a('go', 'staffhideyes', 'Yes, take off', '', n.id)}${a('btn2', 'staffkeep', 'Keep')}</div></div>`
+      : `<div class="sumr"><span>${esc(n.name)}</span>${act.length > 1 ? a('stop', 'staffhide', 'Stop showing on the tablet', '', n.id) : '<span class="sub">Only name on the tablet</span>'}</div>`).join('')}
+${d.hidden && d.hidden.length ? `<div style="display: flex; flex-direction: column; gap: 6px"><b>Not on the tablet</b>${d.hidden.map((n) => `<div class="sumr"><span>${esc(n.name)}${n.had_signups ? ' <span class="sub">(past sign-ups still counted)</span>' : ''}</span>${a('stop', 'staffshow', 'Put back on the tablet', '', n.id)}</div>`).join('')}</div>` : (d.former && d.former.length ? `<p class="sub" style="margin: 0">Former staff (past sign-ups still counted): ${esc(d.former.join(', '))}</p>` : '')}
 <div><label class="l" for="nn">Add a name</label>${inp('nn', u.list.name || '', { f: 'list.name', ph: 'For example: Pam T.', cap: 'words', enter: 'staffadd', err: !!u.list.err })}${u.list.err ? `<div id="nnerr" class="err" role="alert">${esc(u.list.err)}</div>` : ''}<div class="sub">First name and surname initial, so two people with the same first name can be told apart.</div></div>
 ${a('go', 'staffadd', 'Add')}${a('quiet', 'listdone', 'Done', ' style="justify-content: flex-start"')}</section>`;
   }
