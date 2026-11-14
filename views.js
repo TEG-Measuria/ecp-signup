@@ -49,9 +49,29 @@ export function s1(S) {
   const errBlock = (locked || badc || u.msg) ? err('pinerr', msg) : '<div class="err errslot" aria-hidden="true">&nbsp;</div>';
   const buttons = stopMode
     ? `${a('go', 'stopgo', 'Stop and start again')}${a('quiet', 'stopback', 'Go back to the patient&#39;s sign-up')}`
-    : `${a('go' + (locked ? ' dim' : ''), 'login', 'Sign in', locked ? ' aria-disabled="true"' : '')}<a class="quiet" href="#/m1">Manager area</a>`;
+    : `${a('go' + (locked ? ' dim' : ''), 'login', 'Sign in', locked ? ' aria-disabled="true"' : '')}${a('quiet', 'useemail', 'Sign in with the practice email instead')}<a class="quiet" href="#/m1">Manager area</a>`;
+  // B3 (Vik, 13 Nov 2026): the tablet signs in with a code emailed to the practice inbox, then stays signed in for 30 days.
+  if (!stopMode && u.stage !== 'pin') return s1email(S, locked);
   return wrap(S, `${top(S)}<main class="main ctr solo"><div class="lc">${heading}</div><div class="rc">
 <div><label class="l" for="pin">Practice code</label>${inp('pin', u.pin || '', { type: 'password', mode: 'numeric', ph: '6 digits', err: locked || badc, f: 'pin', enter: stopMode ? 'stopgo' : 'login' })}${errBlock}</div>${buttons}</div></main>`);
+}
+
+function s1email(S, locked) {
+  const u = S.ui;
+  const codeStage = u.stage === 'code';
+  const heading = `<div style="display: flex; flex-direction: column; gap: 14px"><div class="step">Staff only</div>${h1('Eyecare Plan sign-up')}<p class="help">${codeStage
+    ? `We have emailed a 6-digit code to ${esc(u.sentTo || 'the practice inbox')}. It works for 10 minutes. Patients never see this screen.`
+    : 'Sign this tablet in with the practice email. We email a code to that inbox, and the tablet then stays signed in for 30 days. Patients never see this screen.'}</p></div>`;
+  const bad = codeStage ? (!!u.bad || locked) : !!u.emailBad;
+  const msg = u.msg || (locked ? 'Too many tries. Please wait 5 minutes, or ask the practice manager.' : '');
+  const errBlock = msg ? err(codeStage ? 'scodeerr' : 'semailerr', msg) : '<div class="err errslot" aria-hidden="true">&nbsp;</div>';
+  const field = codeStage
+    ? `<div><label class="l" for="scode">Code from the email</label>${inp('scode', u.scode || '', { mode: 'numeric', ph: '6 digits', err: bad, f: 'scode', enter: 'codelogin', desc: 'scodeerr' })}${errBlock}</div>`
+    : `<div><label class="l" for="semail">Practice email</label>${inp('semail', u.semail || '', { type: 'email', mode: 'email', ph: 'reception@…', err: bad, f: 'semail', enter: 'sendcode', desc: 'semailerr' })}${errBlock}</div>`;
+  const buttons = codeStage
+    ? `${a('go' + (locked ? ' dim' : ''), 'codelogin', 'Sign in', locked ? ' aria-disabled="true"' : '')}${a('quiet', 'newcode', 'Send a new code')}${a('quiet', 'otheremail', 'Use a different email')}`
+    : `${a('go', 'sendcode', 'Email me a code')}${S.fallback ? a('quiet', 'usepin', 'Use the practice code instead') : ''}<a class="quiet" href="#/m1">Manager area</a>`;
+  return wrap(S, `${top(S)}<main class="main ctr solo"><div class="lc">${heading}</div><div class="rc">${field}${buttons}</div></main>`);
 }
 
 // ---------------------------------------------------------------- S2
@@ -62,7 +82,7 @@ export function s2(S) {
   const radios = S.staff.map((n) => `<label class="${u.staffId === n.id ? 'on' : ''}"><input class="sr" type="radio" name="who" value="${esc(n.id)}" data-f="who"${u.staffId === n.id ? ' checked' : ''}><span class="dot" aria-hidden="true"></span>${esc(n.name)}</label>`).join('');
   return wrap(S, `${top(S, { staff: true, right: '<a class="who" href="#/s3">Today&#39;s sign-ups</a>' })}<main class="main solo s2">${S.fam ? '<div class="alert" role="status" style="background: var(--alt)">Next family member: enter their Optix ID.</div>' : ''}<div class="hd2">
 <div class="step">Staff · new sign-up</div>${h1('Start a sign-up')}
-<p class="help">Enter the Optix ID and choose your name, then hand the tablet to the patient.</p></div><div class="lc">
+<p class="help">Enter the Optix ID and choose your name, then hand the tablet to the patient.</p>${u.closed ? '<div class="alert bad" role="alert">Sign-ups are closed after 8pm. The tablet stays signed in; start again tomorrow.</div>' : ''}</div><div class="lc">
 <div><label class="l" for="optix">Patient&#39;s Optix ID</label>${inp('optix', u.optix || '', { mode: 'numeric', err: badId, f: 'optix', enter: 'handover', desc: 'iderr' })}
 ${badId ? '<div id="iderr" class="err" role="alert">An Optix ID is numbers only. Check it on the patient&#39;s record.</div>' : ''}</div></div><div class="rc">
 <fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px" aria-describedby="nmerr"><legend class="l" style="padding: 0 0 6px; font-weight: 600">Who is signing this patient up?</legend>
@@ -332,7 +352,7 @@ ${d.by_practice.map((r) => `<div class="mrow" role="row"><span class="nm" role="
 ${a('go', 'download', 'Download all practices for payroll', '', 'all')}
 <p class="sub" style="margin: 0">One spreadsheet, one line per sign-up, with a practice column. Open a practice to see its staff and sign-ups, as its manager does.</p></section>`;
   } else if (!d.by_staff.length && !d.each.length) {
-    inner = `<section class="box empty" aria-label="No sign-ups this month"><h2>No sign-ups in ${esc(month)}</h2><p style="margin: 0">Use the arrows to see another month. There is nothing to download for payroll this month.</p>${a('stop', 'stafflist', 'Edit the staff list', ' style="color: var(--ink)"')}</section>`;
+    inner = `<section class="box empty" aria-label="No sign-ups this month"><h2>No sign-ups in ${esc(month)}</h2><p style="margin: 0">Use the arrows to see another month. There is nothing to download for payroll this month.</p>${a('stop', 'stafflist', 'Edit the staff list', ' style="color: var(--ink)"')}${a('stop', 'tabletsopen', 'Tablets signed in', ' style="color: var(--ink)"')}</section>`;
   } else {
     const t = d.total;
     inner = `<div class="two" style="display: flex; flex-direction: column; gap: 14px"><div class="lc"><div class="rows" role="table" aria-label="Sign-ups by staff, ${esc(month)}" style="border-top: 1px solid var(--line)">
@@ -343,7 +363,7 @@ ${a('go', 'download', 'Download for payroll', '', 'one')}
 <p class="sub" style="margin: 0">A spreadsheet with one line per sign-up: date, staff, patient Optix ID, plan, reference. Signed-in-error sign-ups are left out; changed ones are marked. Every download is recorded with who and when.</p></div><div class="rc">
 <h2>Each sign-up this month</h2><div class="rows" role="table" aria-label="Each sign-up, ${esc(month)}"><div class="row hd" role="row"><span role="columnheader">Date</span><span role="columnheader">Patient</span><span role="columnheader">Plan</span><span role="columnheader">Signed up by</span><span role="columnheader">Action</span></div>
 ${d.each.map((e) => `<div class="row" role="row"><span role="cell"><span class="k">Date</span>${esc(e.date)}</span><span role="cell"><span class="k">Patient</span>${esc(e.patient)}<br><span class="sub">Optix ${esc(e.optix)}</span></span><span role="cell"><span class="k">Plan</span>${esc(e.plan_short)}</span><span role="cell"><span class="k">Signed up by</span>${esc(e.staff)}${e.changed ? `<br><span class="sub">${esc(e.changed)}</span>` : ''}</span><span role="cell"><span class="k">Action</span>${a('stop', 'changeopen', 'Change who signed up', '', e.ref)}</span></div>`).join('')}</div>
-${a('quiet', 'stafflist', 'Edit the staff list', ' style="justify-content: flex-start"')}</div></div>`;
+${a('quiet', 'stafflist', 'Edit the staff list', ' style="justify-content: flex-start"')}${a('quiet', 'tabletsopen', 'Tablets signed in', ' style="justify-content: flex-start"')}</div></div>`;
   }
   // change who signed up
   let change = '';
@@ -369,13 +389,23 @@ ${d.hidden && d.hidden.length ? `<div style="display: flex; flex-direction: colu
 <div><label class="l" for="nn">Add a name</label>${inp('nn', u.list.name || '', { f: 'list.name', ph: 'For example: Pam T.', cap: 'words', enter: 'staffadd', err: !!u.list.err })}${u.list.err ? `<div id="nnerr" class="err" role="alert">${esc(u.list.err)}</div>` : ''}<div class="sub">First name and surname initial, so two people with the same first name can be told apart.</div></div>
 ${a('go', 'staffadd', 'Add')}${a('quiet', 'listdone', 'Done', ' style="justify-content: flex-start"')}</section>`;
   }
-  const showMain = !u.change && !u.list;
+  let tabs = '';
+  if (u.tabs) {
+    const T = u.tabs;
+    const rows = T.rows === null ? '<p class="help" role="status">Loading…</p>' : !T.rows.length ? '<p style="margin: 0">No tablets are signed in.</p>'
+      : T.rows.map((x) => T.ask === x.id
+        ? `<div class="box" role="alertdialog" aria-label="Sign this tablet out" style="display: flex; flex-direction: column; gap: 10px; padding: 14px"><b>Sign this tablet out?</b><span>Signed in ${esc(x.signed_in)}, last used ${esc(x.last_used)}. Any sign-up open on it is lost; it needs the practice email to sign in again.</span><div class="pair">${a('go', 'tabletoutyes', 'Yes, sign it out', '', x.id)}${a('btn2', 'tabletkeep', 'Keep')}</div></div>`
+        : `<div class="sumr"><span style="white-space: normal">Signed in ${esc(x.signed_in)} with the ${esc(x.how.toLowerCase())}<br><span class="sub">Last used ${esc(x.last_used)} · signed in until ${esc(x.until)}</span></span>${a('stop', 'tabletask', 'Sign this tablet out', '', x.id)}</div>`).join('');
+    tabs = `<section class="box pnl2 tabs1" aria-label="Tablets signed in" style="display: flex; flex-direction: column; gap: 12px"><h2>Tablets signed in</h2><p style="margin: 0">A tablet stays signed in for 30 days after the practice email code. Sign one out if it is lost or no longer used.</p>
+${T.msg ? `<div class="alert ok" role="status">${esc(T.msg)}</div>` : ''}${rows}${a('quiet', 'tabletsdone', 'Done', ' style="justify-content: flex-start"')}</section>`;
+  }
+  const showMain = !u.change && !u.list && !u.tabs;
   const nav = group ? '' : `<div style="display: flex; gap: 8px; align-items: center">${a('btn2', 'month', '‹', ' aria-label="Previous month" style="min-height: 44px"', '-1')}<b style="font-size: 18px; min-width: 130px; text-align: center">${esc(month)}</b>${a('btn2', 'month', '›', ' aria-label="Next month" style="min-height: 44px"', '1')}</div>`;
   const navG = group ? `<div style="display: flex; gap: 8px; align-items: center">${a('btn2', 'month', '‹', ' aria-label="Previous month" style="min-height: 44px"', '-1')}<b style="font-size: 18px; min-width: 130px; text-align: center">${esc(month)}</b>${a('btn2', 'month', '›', ' aria-label="Next month" style="min-height: 44px"', '1')}</div>` : nav;
   const back = m.scope === 'group' && !group ? a('quiet', 'allpractices', 'All practices', ' style="justify-content: flex-start"') : '';
   return wrap(S, `${top(S, { mgr: true, label: barL })}<main class="main one" style="max-width: 1000px"><div class="mstk" style="display: flex; flex-direction: column; gap: 22px">${MTABS('m1')}${back}
 <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap"><div class="eh"><div class="step">Manager</div>${h1('Sign-ups by staff')}</div>${navG}</div>
-${u.done ? `<div class="alert ok" role="status">${esc(u.done)}</div>` : ''}${u.error ? `<div class="alert bad" role="alert">${esc(u.error)}</div>` : ''}${change}${list}${showMain ? inner : ''}</div></main>`);
+${u.done ? `<div class="alert ok" role="status">${esc(u.done)}</div>` : ''}${u.error ? `<div class="alert bad" role="alert">${esc(u.error)}</div>` : ''}${change}${list}${tabs}${showMain ? inner : ''}</div></main>`);
 }
 
 // The board lists the earlier sign-up first (dd/mm/yyyy, then reference), whatever order the server sends.

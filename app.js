@@ -15,6 +15,8 @@ const ls = {
   set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } },
   del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
 };
+// Sign-ups close at 8pm UK time (the server checks too); the tablet itself stays signed in.
+function signupsOpenNow() { try { return Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hourCycle: 'h23' }).format(new Date())) < 20; } catch (e) { return true; } }
 const rand = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
 let device = ls.get('ecp_device');
 if (!device) { device = rand(); ls.set('ecp_device', device); }
@@ -54,7 +56,7 @@ function wipePatient() {
   S.pt = blankPt(); S.result = null; S.fam = null; S.idem = null; S.idemSig = ''; S.staffUnlocked = false; S.stash = null; S.stopFrom = null;
 }
 function logout(msg) {
-  S.session = null; S.expires = 0; S.staff = []; ls.del('ecp_session'); ls.del('ecp_exp');
+  S.session = null; S.expires = 0; S.staff = []; S.practice = null; ls.del('ecp_session'); ls.del('ecp_exp');
   wipePatient(); S.flash = msg || null; go('s1');
 }
 function mgrOut() { S.mgr = null; if (S.route === 'm1' || S.route === 'm2') go('s1'); }
@@ -77,7 +79,7 @@ window.addEventListener('hashchange', () => onRoute());
 
 function initUi(route, q) {
   switch (route) {
-    case 's1': { const u = { pin: '', stop: 'stop' in q }; if (S.flash) { u.msg = S.flash; S.flash = null; } return u; }
+    case 's1': { const u = { pin: '', stop: 'stop' in q, stage: 'email', semail: '', scode: '' }; if (S.flash) { u.msg = S.flash; S.flash = null; } return u; }
     case 's2': return { optix: '', staffId: S.fam ? S.fam.staffId : '' };
     case 'm1': return { month: monthKey(new Date()), view: S.mgr && S.mgr.scope === 'group' ? 'group' : 'practice', pin: '' }; // a group sign-in always lands on the group summary
     case 'm2': return { q: '' };
@@ -324,10 +326,61 @@ const ACT = {
     } catch (e) {
       setBusy(false); u.pin = '';
       if (e.code === 'locked') { u.locked = true; u.msg = e.message; setTimeout(() => { if (S.route === 's1') { S.ui.locked = false; S.ui.msg = ''; render(); } }, (e.body.retry_after_s || 300) * 1000); }
-      else if (e.code === 'bad_code') u.bad = true; else if (e.code === 'closed') { u.bad = true; u.msg = e.message; } else u.msg = e.message;
+      else if (e.code === 'bad_code') u.bad = true; else if (e.code === 'closed') { u.bad = true; u.msg = e.message; }
+      else if (e.code === 'use_email') { S.fallback = false; u.stage = 'email'; u.msg = e.message; render({ focusId: 'semail' }); return; } else u.msg = e.message;
       render({ focusId: 'pin' });
     }
   },
+  // ---- S1, B3: the practice email gets a code (Vik, 13 Nov 2026)
+  async sendcode() {
+    const u = S.ui; u.bad = false; u.msg = ''; u.emailBad = false;
+    const email = (u.semail || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { u.emailBad = true; u.msg = 'Please enter the practice email address.'; render({ focusId: 'semail' }); return; }
+    setBusy(true);
+    try {
+      const r = await call('email-code', { email, device, practice: HOSTS[location.hostname] || undefined });
+      setBusy(false); u.stage = 'code'; u.sentTo = r.sent_to; u.codePractice = r.practice; u.scode = ''; render({ focusId: 'scode' });
+    } catch (e) {
+      setBusy(false);
+      if (e.code === 'not_practice_email' || e.code === 'invalid') u.emailBad = true;
+      u.msg = (e.body && e.body.fields && e.body.fields.email) || e.message; render({ focusId: 'semail' });
+    }
+  },
+  async codelogin() {
+    const u = S.ui; u.bad = false; u.msg = '';
+    if (!/^\d{6}$/.test((u.scode || '').trim())) { u.bad = true; u.msg = 'Enter the 6-digit code from the email.'; render({ focusId: 'scode' }); return; }
+    setBusy(true);
+    try {
+      const r = await call('email-login', { practice: u.codePractice, code: u.scode.trim(), device });
+      setBusy(false); setSession(r); u.scode = ''; go('s2');
+    } catch (e) {
+      setBusy(false); u.scode = '';
+      if (e.code === 'locked') { u.locked = true; u.msg = e.message; setTimeout(() => { if (S.route === 's1') { S.ui.locked = false; S.ui.msg = ''; render(); } }, (e.body.retry_after_s || 300) * 1000); }
+      else { u.bad = true; u.msg = e.message; }
+      render({ focusId: 'scode' });
+    }
+  },
+  newcode() { const u = S.ui; u.stage = 'email'; u.msg = ''; u.bad = false; ACT.sendcode(); },
+  otheremail() { const u = S.ui; u.stage = 'email'; u.msg = ''; u.bad = false; render({ focusId: 'semail' }); },
+  usepin() { const u = S.ui; u.stage = 'pin'; u.msg = ''; u.bad = false; render({ focusId: 'pin' }); },
+  useemail() { const u = S.ui; u.stage = 'email'; u.msg = ''; u.bad = false; render({ focusId: 'semail' }); },
+  // ---- M1: tablets signed in (a manager can sign any of them out)
+  async tabletsopen() {
+    const u = S.ui; u.done = ''; u.tabs = { rows: null, msg: '', ask: null }; render();
+    try { const r = await api('tablets', { practice: u.practiceCode || undefined }, 'manager'); u.tabs.rows = r.tablets; render(); }
+    catch (e) { if (!e.handled) { u.tabs = null; u.error = e.message; render(); } }
+  },
+  tabletask(id) { S.ui.tabs.ask = id; render(); },
+  tabletkeep() { S.ui.tabs.ask = null; render(); },
+  async tabletoutyes(id) {
+    const u = S.ui; setBusy(true);
+    try {
+      await api('tablet-out', { id, practice: u.practiceCode || undefined }, 'manager');
+      const r = await api('tablets', { practice: u.practiceCode || undefined }, 'manager');
+      setBusy(false); u.tabs = { rows: r.tablets, msg: 'That tablet is signed out. It needs the practice email to sign in again.', ask: null }; render();
+    } catch (e) { setBusy(false); if (!e.handled) { u.tabs.ask = null; u.tabs.msg = e.message; render(); } }
+  },
+  tabletsdone() { S.ui.tabs = null; render(); },
   stop() { S.stopFrom = S.route; S.stash = S.ui; keep = false; },
   async stopgo() {
     const u = S.ui; u.bad = false; u.msg = '';
@@ -342,11 +395,12 @@ const ACT = {
     }
   },
   stopback() { S.ui = S.stash || {}; const back = S.stopFrom || 'p0'; S.stopFrom = null; go(back, { keep: true }); },
-  signout() { const wasS = S.session; if (wasS) api('sign-out', {}).catch(() => {}); S.session = null; ls.del('ecp_session'); ls.del('ecp_exp'); wipePatient(); S.staff = []; },
+  signout() { const wasS = S.session; if (wasS) api('sign-out', {}).catch(() => {}); S.session = null; S.practice = null; ls.del('ecp_session'); ls.del('ecp_exp'); wipePatient(); S.staff = []; },
   // ---- S2
   handover() {
     const u = S.ui;
     if (!S.staff.length) return;
+    if (!signupsOpenNow()) { u.closed = true; render(); return; }
     const optix = (u.optix || '').trim();
     u.badId = !/^\d+$/.test(optix); u.noName = !u.staffId;
     if (u.badId || u.noName) { render({ focusId: u.badId ? 'optix' : null }); return; }
@@ -666,7 +720,7 @@ async function handleMsReturn() {
 
 async function boot() {
   S.land = mq.matches;
-  try { const b = await call('brand', { practice: pcode }); S.brand = b.practice; S.practice = null; } catch (e) { S.brand = null; }
+  try { const b = await call('brand', { practice: pcode }); S.brand = b.practice; S.practice = null; S.fallback = b.code_fallback !== false; } catch (e) { S.brand = null; S.fallback = true; }
   const tok = ls.get('ecp_session'), exp = Number(ls.get('ecp_exp') || 0);
   if (tok && exp > Date.now()) {
     S.session = tok; S.expires = exp;

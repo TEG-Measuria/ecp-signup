@@ -25,3 +25,6 @@ select.in{appearance:auto}
 
 /* Sign-in screens before a practice code: no logo (Vik, 13 Nov 2026); the empty span keeps the header height */
 .top .nologo{display:block;height:32px}
+
+/* B3 tablets panel: one column even on a landscape tablet */
+.land .pnl2.tabs1{display:flex !important;flex-direction:column;align-items:stretch}

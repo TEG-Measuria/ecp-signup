@@ -110,7 +110,33 @@ function monthData(month, pr) {
 }
 
 const R = {
-  async brand() { return { practice }; },
+  async brand() { return { practice, email_signin: true, code_fallback: Q.get('nofallback') !== '1' }; },
+
+  // B3: the practice email gets a code (mock code 123456; email must contain "reception")
+  async 'email-code'({ email }) {
+    if (!/reception/i.test(String(email || ''))) throw ApiErr(400, 'not_practice_email', 'That is not this practice\'s email. Use the practice email address.');
+    return { practice: practice.code, sent_to: 'rec\u2026@practice.co.uk', expires_in_s: 600 };
+  },
+  async 'email-login'({ code, device }) {
+    if (code === '000000') throw lockedErr();
+    if (code !== '123456') throw ApiErr(401, 'bad_code', 'That code is not right. Check the latest email, or send a new code.');
+    const token = `mock-tablet-${++tokenSeq}`;
+    const exp = new Date(Date.now() + 30 * 864e5);
+    sessions.set(token, { kind: 'tablet', expires: exp.getTime(), device, signed: new Date() });
+    return { session: token, expires_at: exp.toISOString(), practice, staff: publicStaff(), terms: TERMS, open: Q.get('closed') !== '1' };
+  },
+  async tablets(_b, token) {
+    needSession(token, 'manager');
+    const f = (d) => d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return { tablets: [...sessions.entries()].filter(([, v]) => v.kind === 'tablet').map(([k, v]) => ({ id: (k + '0000000000000000').replace(/[^0-9a-f]/g, 'a').slice(0, 16), tok: k, how: v.signed ? 'Practice email' : 'Practice code', signed_in: f(v.signed || new Date()), last_used: f(new Date()), until: f(new Date(v.expires)) })).map(({ tok, ...x }) => x) };
+  },
+  async 'tablet-out'({ id }, token) {
+    needSession(token, 'manager');
+    if (!/^[0-9a-f]{16}$/.test(String(id || ''))) throw ApiErr(400, 'invalid', 'That tablet was not found.');
+    const k = [...sessions.keys()].find((t) => sessions.get(t).kind === 'tablet' && (t + '0000000000000000').replace(/[^0-9a-f]/g, 'a').slice(0, 16) === id);
+    if (!k) throw ApiErr(404, 'not_found', 'That tablet is already signed out.');
+    sessions.delete(k); return { ok: true };
+  },
 
   async 'tablet-login'({ code, device }) {
     if (code === '000000') throw lockedErr();
