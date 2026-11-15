@@ -325,11 +325,19 @@ const MTABS = (on) => `<nav class="tabs" aria-label="Manager area">${[['m1', 'Si
 function mcode(S) {
   const u = S.ui;
   const badc = !!u.bad;
-  const msNo = S.msUnset;
-  const msBtn = msNo ? '<div class="err" role="status">Microsoft sign-in is not set up yet</div>' : a('go', 'msgo', 'Sign in with Microsoft');
+  const codeStage = u.mstage === 'code';
+  // Microsoft sign-in shows only once it is set up; until then the emailed code is the main way in (Vik, 15 Nov 2026)
+  const msBtn = S.msUnset ? '' : `${a('btn2', 'msgo', 'Sign in with Microsoft')}${u.msErr ? `<div class="err" role="alert">${esc(u.msErr)}</div>` : ''}`;
+  const emsg = u.mmsg || '';
+  const emailPart = codeStage
+    ? `<p class="help">We have emailed a 6-digit code to ${esc(u.msentTo || 'your inbox')}. It works for 10 minutes, on this device.</p>
+<div><label class="l" for="mecode">Code from the email</label>${inp('mecode', u.mecode || '', { mode: 'numeric', ph: '6 digits', err: !!u.mbad, f: 'mecode', enter: 'mecodego', desc: 'mecodeerr' })}${err('mecodeerr', emsg)}</div>
+${a('go', 'mecodego', 'Open the manager area')}${a('quiet', 'menewcode', 'Send a new code')}${a('quiet', 'meother', 'Use a different email')}`
+    : `<p class="help">Enter your own work email and we will email you a code. The shared reception inbox can&#39;t open this area.</p>
+<div><label class="l" for="memail">Your email</label>${inp('memail', u.memail || '', { type: 'email', mode: 'email', ph: 'name@…', err: !!u.mbad, f: 'memail', enter: 'mesend', desc: 'memailerr' })}${err('memailerr', emsg)}</div>
+${a('go', 'mesend', 'Email me a code')}`;
   return `<section style="display: flex; flex-direction: column; gap: 14px"><div class="step">Manager only</div>${h1('Manager area')}
-<p class="help">Sign in with your own Microsoft work account. The shared reception account can&#39;t open this area.</p>
-${msBtn}${u.msErr ? `<div class="err" role="alert">${esc(u.msErr)}</div>` : ''}
+${emailPart}${msBtn}
 <div class="sub" style="text-align: center">or use the manager code</div>
 <div><label class="l" for="mpin">Manager code</label>${inp('mpin', u.pin || '', { type: 'password', mode: 'numeric', ph: '6 digits', err: badc, f: 'pin', enter: 'mcodego', desc: 'mperr' })}${badc ? `<div id="mperr" class="err" role="alert">${esc(u.msg || 'That code is not right. After 5 tries it locks for 5 minutes.')}</div>` : ''}</div>
 ${a('btn2', 'mcodego', 'Open with the code')}<a class="quiet" href="#/s1">Back</a></section>`;
@@ -346,7 +354,7 @@ export function m1(S) {
   if (!d) inner = '<p class="help" role="status">Loading…</p>';
   else if (group) {
     inner = `<section class="box" aria-label="All practices" style="display: flex; flex-direction: column; gap: 14px"><h2>All practices, ${esc(month)}</h2>
-<p style="margin: 0">Signed in with the group code: every practice, each in its own brand on its own tablet.</p>
+<p style="margin: 0">Signed in for the whole group: every practice, each in its own brand on its own tablet.</p>
 <div class="rows" role="table" aria-label="Sign-ups by practice, ${esc(month)}" style="border-top: 1px solid var(--line)"><div class="mrow hd" role="row"><span role="columnheader">Practice</span><span role="columnheader">Gold</span><span role="columnheader">Gold Family</span><span role="columnheader">Other plans (Essential, Contacts)</span><span role="columnheader">Total</span></div>
 ${d.by_practice.map((r) => `<div class="mrow" role="row"><span class="nm" role="cell"><a href="#" data-act="openpractice" data-arg="${esc(r.code)}|${esc(r.name)}">${esc(r.name)}</a></span><span role="cell"><span class="k">Gold</span><span class="num">${r.g}</span></span><span role="cell"><span class="k">Gold Family</span><span class="num">${r.f}</span></span><span role="cell"><span class="k">Other plans</span><span class="num">${r.o}</span></span><span role="cell"><span class="k">Total</span><b class="num">${r.t}</b></span></div>`).join('')}</div>
 ${a('go', 'download', 'Download all practices for payroll', '', 'all')}

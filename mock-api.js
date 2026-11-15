@@ -220,6 +220,16 @@ const R = {
     if (code === '999999') return mgrSession('group', 'Group');
     throw ApiErr(401, 'bad_code', 'That code is not right. After 5 tries it locks for 5 minutes.');
   },
+  // manager emailed code (mock code 123456; the email must contain "vik" or "manager")
+  async 'manager-email-code'({ email }) {
+    if (!/vik|manager/i.test(String(email || ''))) throw ApiErr(400, 'not_manager_email', "That email can't open the manager area. Use your own work email, or the manager code.");
+    return { sent_to: 'v…@theeyecaregroup.co.uk', expires_in_s: 600 };
+  },
+  async 'manager-email-login'({ code }) {
+    if (code === '000000') throw lockedErr();
+    if (code !== '123456') throw ApiErr(401, 'bad_code', 'That code is not right. Check the latest email, or send a new code.');
+    return mgrSession('group', 'Vik (email)');
+  },
   async 'm365-login'({ id_token, nonce }) {
     if (typeof nonce !== 'string' || nonce.length < 16) throw ApiErr(403, 'forbidden', "This account can't open the manager area.");
     if (id_token === 'mock-deny') throw ApiErr(403, 'forbidden', "This account can't open the manager area.");

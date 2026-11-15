@@ -519,6 +519,32 @@ const ACT = {
     try { const r = await call('manager-login', { code: u.pin, device }); setBusy(false); await mgrIn(r); }
     catch (e) { setBusy(false); u.pin = ''; u.bad = true; u.msg = e.code === 'locked' ? e.message : e.code === 'bad_code' ? '' : e.message; render({ focusId: 'mpin' }); }
   },
+  // ---- Manager: a code emailed to the manager's own address (Vik, 15 Nov 2026)
+  async mesend() {
+    const u = S.ui; u.mbad = false; u.mmsg = '';
+    const email = (u.memail || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { u.mbad = true; u.mmsg = 'Please enter your email address.'; render({ focusId: 'memail' }); return; }
+    setBusy(true);
+    try {
+      const r = await call('manager-email-code', { email, device, practice: HOSTS[location.hostname] || undefined });
+      setBusy(false); u.mstage = 'code'; u.msentTo = r.sent_to; u.mecode = ''; render({ focusId: 'mecode' });
+    } catch (e) {
+      setBusy(false);
+      // a resend that fails keeps the code box, so the code already emailed can still be typed
+      if (u.mstage === 'code') { u.mbad = false; u.mmsg = e.message; render({ focusId: 'mecode' }); return; }
+      u.mbad = e.code === 'not_manager_email' || e.code === 'invalid';
+      u.mmsg = (e.body && e.body.fields && e.body.fields.email) || e.message; render({ focusId: 'memail' });
+    }
+  },
+  async mecodego() {
+    const u = S.ui; u.mbad = false; u.mmsg = '';
+    if (!/^\d{6}$/.test((u.mecode || '').trim())) { u.mbad = true; u.mmsg = 'Enter the 6-digit code from the email.'; render({ focusId: 'mecode' }); return; }
+    setBusy(true);
+    try { const r = await call('manager-email-login', { email: (u.memail || '').trim(), code: u.mecode.trim(), device }); setBusy(false); u.mecode = ''; u.mstage = ''; await mgrIn(r); }
+    catch (e) { setBusy(false); u.mecode = ''; u.mbad = true; u.mmsg = e.message; render({ focusId: 'mecode' }); }
+  },
+  menewcode() { ACT.mesend(); },
+  meother() { const u = S.ui; u.mstage = ''; u.mmsg = ''; u.mbad = false; render({ focusId: 'memail' }); },
   async msgo() {
     if (MS_SIM) {
       setBusy(true);
