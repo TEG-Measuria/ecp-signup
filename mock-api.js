@@ -1,6 +1,6 @@
 // In-memory mock of every ecp-api route (used with ?mock=1). Dummy people only.
 // Magic values: practice code 123456 ok / 000000 locked; manager code 654321 (practice) / 999999 (group) / 000000 locked;
-// patient email ending @fail.test -> patient_copy "failed"; Optix ID 999 -> submit 500.
+// patient email ending @fail.test -> patient_copy "failed"; Optix ID 999 -> submit 500. Email containing pfail -> practice_copy "failed".
 // Optional URL params: ?exp=SECONDS (tablet session length), ?ms=mock|deny (Microsoft sign-in simulation, read by app.js).
 import practiceData from './mock-practice.js';
 
@@ -174,7 +174,7 @@ const R = {
     const failed = !noEmail && /@fail\.test$/i.test(b.email);
     const rec = { ref, patient: b.name, optix: String(b.optix), staffId: b.staff_id, plan: b.plan, email: noEmail ? null : b.email, copy: noEmail ? 'No email' : failed ? 'Not sent' : 'Sending', date: new Date(), void: false, changed: '' };
     signups.push(rec);
-    const out = { ref, signed_at: new Date().toISOString(), masked_email: noEmail ? null : mask(b.email), patient_copy: noEmail ? 'no_email' : failed ? 'failed' : 'sent', practice_copy: 'sent' };
+    const out = { ref, signed_at: new Date().toISOString(), masked_email: noEmail ? null : mask(b.email), patient_copy: noEmail ? 'no_email' : failed ? 'failed' : 'sent', practice_copy: /pfail/i.test(String(b.email || '')) ? 'failed' : 'sent' };
     idem.set(b.idempotency_key, out);
     return out;
   },

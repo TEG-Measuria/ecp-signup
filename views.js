@@ -257,8 +257,8 @@ export function p5(S) {
     staff = `<section style="border-top: 3px solid var(--ink); padding-top: 18px; display: flex; flex-direction: column; gap: 14px" aria-label="For staff">
 <div class="step">For staff · ref ${esc(r.ref)}</div>
 ${u.note ? `<div class="alert ok" role="status">${esc(u.note)}</div>` : ''}
-${!failed && !noEmail ? `<div class="alert ok" role="status">Signed copy sent to the patient and to ${esc(rc)}. Delivery shows on Today&#39;s sign-ups.</div>` : ''}
-${failed ? `<div class="alert bad" role="alert">The patient&#39;s email has not sent. Check the address with them, then try again, or print it. The practice copy has gone to ${esc(rc)}.</div>
+${!failed && !noEmail ? `<div class="alert ok" role="status">Signed copy sent to the patient${r.practice_copy === 'failed' ? '' : ` and to ${esc(rc)}`}. Delivery shows on Today&#39;s sign-ups.</div>` : ''}
+${failed ? `<div class="alert bad" role="alert">The patient&#39;s email has not sent. Check the address with them, then try again, or print it.${r.practice_copy === 'failed' ? '' : ` The practice copy has gone to ${esc(rc)}.`}</div>
 <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">${a('btn2', 'p5retry', 'Try again')}${a('btn2', 'p5print', 'Print the copy')}</div>` : ''}
 ${noEmail ? a('btn2', 'p5print', 'Print the signed copy and booklet') : ''}
 ${r.practice_copy === 'failed' ? `<div class="alert bad" role="alert">The practice copy to ${esc(rc)} has not sent. Print the signed copy and keep it with the patient&#39;s record.</div>` : ''}
