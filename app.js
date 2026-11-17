@@ -52,6 +52,16 @@ function setSession(r) {
   if (r.practice && r.practice.code) { pcode = r.practice.code; ls.set('ecp_p', pcode); } // the tablet remembers the practice it signed in to
   ls.set('ecp_session', r.session); ls.set('ecp_exp', String(S.expires));
 }
+// The line the start screen shows after a sign-up (replaces the code-locked staff panel on P5, Vik 17 Nov 2026).
+function doneNote() {
+  const r = S.result; if (!r) return null;
+  const todo = ' Now set up the Direct Debit in Optix and attach the signed copy to the patient\'s Optix record.';
+  const pc = r.practice_copy === 'failed' ? ' The practice copy has not sent either.' : '';
+  if (r.patient_copy === 'failed') return { bad: true, msg: `Sign-up ${r.ref} is saved, but the patient's email has not sent. Open Today's sign-ups to send it again or print it.${pc}${todo}` };
+  if (r.patient_copy === 'no_email') return { bad: true, msg: `Sign-up ${r.ref} is saved. The patient has no email: print the signed copy and booklet from Today's sign-ups.${pc}${todo}` };
+  if (r.practice_copy === 'failed') return { bad: true, msg: `Sign-up ${r.ref} is saved and the patient's copy is sent, but the practice copy has not sent: print it from Today's sign-ups.${todo}` };
+  return { bad: false, msg: `Sign-up ${r.ref} is saved and the signed copy is sent.${todo}` };
+}
 function wipePatient() {
   S.pt = blankPt(); S.result = null; S.fam = null; S.idem = null; S.idemSig = ''; S.staffUnlocked = false; S.stash = null; S.stopFrom = null;
 }
@@ -80,7 +90,7 @@ window.addEventListener('hashchange', () => onRoute());
 function initUi(route, q) {
   switch (route) {
     case 's1': { const u = { pin: '', stop: 'stop' in q, stage: 'email', semail: '', scode: '' }; if (S.flash) { u.msg = S.flash; S.flash = null; } return u; }
-    case 's2': return { optix: '', staffId: S.fam ? S.fam.staffId : '' };
+    case 's2': { const u = { optix: '', staffId: S.fam ? S.fam.staffId : '' }; if (S.done) { u.done = S.done; S.done = null; } return u; }
     case 'm1': return { month: monthKey(new Date()), view: S.mgr && S.mgr.scope === 'group' ? 'group' : 'practice', pin: '' }; // a group sign-in always lands on the group summary
     case 'm2': return { q: '' };
     default: return {};
@@ -464,12 +474,12 @@ const ACT = {
     } catch (e) { setBusy(false); if (e.handled) return; u.perr = e.message; render(); }
   },
   async p5print() { try { await openUrl(api('pdf', { ref: S.result.ref })); S.ui.note = 'Opened the signed copy to print.'; S.ui.perr = ''; } catch (e) { if (!e.handled) S.ui.perr = e.message; } render(); },
-  next() { wipePatient(); go('s2'); },
+  next() { const d = doneNote(); wipePatient(); S.done = d; go('s2'); },
   family() {
     // To S2 first (the board asks for the Optix ID only there). S2's Hand to patient then goes straight to P3, keeping staff name, plan, email, terms-accepted time and prev_ref.
     const P = S.pt, r = S.result;
     const fam = { plan: P.plan, email: P.email, email2: P.email2, no_email: P.no_email, prevRef: r.ref, termsAt: P.termsAt, staffId: P.staffId };
-    wipePatient(); S.fam = fam; go('s2');
+    const d = doneNote(); wipePatient(); S.fam = fam; S.done = d; go('s2');
   },
   // ---- P6
   carryon() {

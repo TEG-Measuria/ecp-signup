@@ -80,7 +80,7 @@ export function s2(S) {
   const noList = S.staff.length === 0;
   const badId = !!u.badId, noName = !!u.noName;
   const radios = S.staff.map((n) => `<label class="${u.staffId === n.id ? 'on' : ''}"><input class="sr" type="radio" name="who" value="${esc(n.id)}" data-f="who"${u.staffId === n.id ? ' checked' : ''}><span class="dot" aria-hidden="true"></span>${esc(n.name)}</label>`).join('');
-  return wrap(S, `${top(S, { staff: true, right: '<a class="who" href="#/s3">Today&#39;s sign-ups</a>' })}<main class="main solo s2">${S.fam ? '<div class="alert" role="status" style="background: var(--alt)">Next family member: enter their Optix ID.</div>' : ''}<div class="hd2">
+  return wrap(S, `${top(S, { staff: true, right: '<a class="who" href="#/s3">Today&#39;s sign-ups</a>' })}<main class="main solo s2">${u.done ? `<div class="alert ${u.done.bad ? 'bad' : 'ok'}" role="status">${esc(u.done.msg)}</div>` : ''}${S.fam ? '<div class="alert" role="status" style="background: var(--alt)">Next family member: enter their Optix ID.</div>' : ''}<div class="hd2">
 <div class="step">Staff · new sign-up</div>${h1('Start a sign-up')}
 <p class="help">Enter the Optix ID and choose your name, then hand the tablet to the patient.</p>${u.closed ? '<div class="alert bad" role="alert">Sign-ups are closed after 8pm. The tablet stays signed in; start again tomorrow.</div>' : ''}</div><div class="lc">
 <div><label class="l" for="optix">Patient&#39;s Optix ID</label>${inp('optix', u.optix || '', { mode: 'numeric', err: badId, f: 'optix', enter: 'handover', desc: 'iderr' })}
@@ -242,8 +242,7 @@ ${btn}<a class="quiet" href="#/p2">Read the terms again</a></div></main>${foot(S
 
 // ---------------------------------------------------------------- P5
 export function p5(S) {
-  const r = S.result, P = S.pt, u = S.ui;
-  const staffView = !!S.staffUnlocked;
+  const r = S.result, P = S.pt;
   const u16 = !!P.u16;
   const fn = (n) => String(n || '').trim().split(/\s+/)[0] || '';
   const headline = u16 ? `Thank you, ${esc(fn(P.parent))}. ${esc(fn(P.name))} is signed up.` : `Thank you, ${esc(fn(P.name))}. You are signed up.`;
@@ -251,29 +250,13 @@ export function p5(S) {
   const copyLine = failed ? 'Your form is signed and saved. The email has not gone through yet, so the team will sort your copy now.'
     : noEmail ? 'Your form is signed and saved. We will print your copy and the benefits booklet for you now.'
       : `We have sent your signed form and the benefits booklet to ${esc(r.masked_email)}. If it is not there in a few minutes, check your junk folder.`;
-  const rc = S.practice.reception_email;
-  let staff = '';
-  if (staffView) {
-    staff = `<section style="border-top: 3px solid var(--ink); padding-top: 18px; display: flex; flex-direction: column; gap: 14px" aria-label="For staff">
-<div class="step">For staff · ref ${esc(r.ref)}</div>
-${u.note ? `<div class="alert ok" role="status">${esc(u.note)}</div>` : ''}
-${!failed && !noEmail ? `<div class="alert ok" role="status">Signed copy sent to the patient${r.practice_copy === 'failed' ? '' : ` and to ${esc(rc)}`}. Delivery shows on Today&#39;s sign-ups.</div>` : ''}
-${failed ? `<div class="alert bad" role="alert">The patient&#39;s email has not sent. Check the address with them, then try again, or print it.${r.practice_copy === 'failed' ? '' : ` The practice copy has gone to ${esc(rc)}.`}</div>
-<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">${a('btn2', 'p5retry', 'Try again')}${a('btn2', 'p5print', 'Print the copy')}</div>` : ''}
-${noEmail ? a('btn2', 'p5print', 'Print the signed copy and booklet') : ''}
-${r.practice_copy === 'failed' ? `<div class="alert bad" role="alert">The practice copy to ${esc(rc)} has not sent. Print the signed copy and keep it with the patient&#39;s record.</div>` : ''}
-${u.perr ? `<div class="err" role="alert">${esc(u.perr)}</div>` : ''}
-<div class="alert" style="background: var(--alt)"><b>To do:</b> 1. Set up the Direct Debit in Optix as usual. 2. Attach the signed copy to the patient&#39;s Optix record (it is in the reception inbox).</div>
-${a('go', 'next', 'Start the next sign-up')}
-${a('btn2', 'family', 'Sign up the next family member (same plan and email)')}
-<a class="quiet" href="#/s3">Today&#39;s sign-ups</a></section>`;
-  } else if (u.askCode) {
-    staff = `<section class="box" aria-label="Staff code" style="display: flex; flex-direction: column; gap: 14px"><div><label class="l" for="pin">Practice code</label>${inp('pin', u.pin || '', { type: 'password', mode: 'numeric', ph: '6 digits', err: !!u.perr, f: 'pin', enter: 'staffgo' })}${u.perr ? `<div id="pinerr" class="err" role="alert">${esc(u.perr)}</div>` : ''}</div>${a('go', 'staffgo', 'Continue')}${a('quiet', 'staffcancel', 'Cancel')}</section>`;
-  }
-  return wrap(S, `${top(S)}<main class="main ${staffView ? '' : 'solo'}"><div class="lc">${h1(headline)}
+  // Vik 17 Nov 2026: no practice code here. Staff tap Done and are back on the start screen,
+  // which shows the ref, the email result and the two Optix to-dos (S.done, set in ACT.next).
+  return wrap(S, `${top(S)}<main class="main solo"><div class="lc">${h1(headline)}
 <p class="help">${copyLine}</p>
 <div class="box" style="font-size: 18px; line-height: 1.5"><b>Next:</b> a member of the team will set up your Direct Debit with you. Please hand the tablet back to them.</div>
-${!staffView && !u.askCode ? a('stop', 'staffask', 'Staff: continue (practice code needed)', ' style="align-self: center"') : ''}</div><div class="rc">${staff}</div></main>`);
+${a('go', 'next', 'Done, back to the start')}
+${a('btn2', 'family', 'Sign up the next family member (same plan and email)')}</div></main>`);
 }
 
 // ---------------------------------------------------------------- P6
