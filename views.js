@@ -40,20 +40,21 @@ const inp = (id, v, o = {}) => `<input id="${id}" class="in${bad(o.err)}" ${o.ty
 // ---------------------------------------------------------------- S1
 export function s1(S) {
   const u = S.ui;
-  const stopMode = !!u.stop;
-  const locked = !!u.locked, badc = !!u.bad;
-  const heading = stopMode
-    ? `<div style="display: flex; flex-direction: column; gap: 14px"><div class="step">Staff only</div>${h1('Stop this sign-up?')}<p class="help">Enter the practice code to stop. Nothing has been saved or sent.</p></div>`
-    : `<div style="display: flex; flex-direction: column; gap: 14px"><div class="step">Staff only</div>${h1('Eyecare Plan sign-up')}<p class="help">Enter the practice sign-up code to start. Patients never see this screen.</p></div>`;
+  // Stop a sign-up: no code (Vik 17 Nov 2026). Staff hold the signed-in tablet and mostly don't know the practice code.
+  if (u.stop) {
+    return wrap(S, `${top(S)}<main class="main ctr solo"><div class="lc"><div style="display: flex; flex-direction: column; gap: 14px"><div class="step">Staff only</div>${h1('Stop this sign-up?')}<p class="help">Nothing will be saved or sent.</p></div></div><div class="rc">
+${a('go', 'stopgo', 'Stop and start again')}${a('quiet', 'stopback', 'Go back to the patient&#39;s sign-up')}</div></main>`);
+  }
+  // B3 (Vik, 13 Nov 2026): the tablet signs in with a code emailed to the practice inbox, then stays signed in for 30 days.
+  // Locks are per route: a practice-code lock never blocks the email route.
+  if (u.stage !== 'pin') return s1email(S, !!u.lockedEmail);
+  const locked = !!u.lockedPin, badc = !!u.bad;
+  const heading = `<div style="display: flex; flex-direction: column; gap: 14px"><div class="step">Staff only</div>${h1('Eyecare Plan sign-up')}<p class="help">Enter the practice sign-up code to start. Patients never see this screen.</p></div>`;
   const msg = locked ? (u.msg || 'Too many tries. Please wait 5 minutes, or ask the practice manager.') : badc ? (u.msg || 'That code is not right. Try again, or ask the practice manager.') : u.msg;
   const errBlock = (locked || badc || u.msg) ? err('pinerr', msg) : '<div class="err errslot" aria-hidden="true">&nbsp;</div>';
-  const buttons = stopMode
-    ? `${a('go', 'stopgo', 'Stop and start again')}${a('quiet', 'stopback', 'Go back to the patient&#39;s sign-up')}`
-    : `${a('go' + (locked ? ' dim' : ''), 'login', 'Sign in', locked ? ' aria-disabled="true"' : '')}${a('quiet', 'useemail', 'Sign in with the practice email instead')}<a class="quiet" href="#/m1">Manager area</a>`;
-  // B3 (Vik, 13 Nov 2026): the tablet signs in with a code emailed to the practice inbox, then stays signed in for 30 days.
-  if (!stopMode && u.stage !== 'pin') return s1email(S, locked);
+  const buttons = `${a('go' + (locked ? ' dim' : ''), 'login', 'Sign in', locked ? ' aria-disabled="true"' : '')}${a('quiet', 'useemail', 'Sign in with the practice email instead')}<a class="quiet" href="#/m1">Manager area</a>`;
   return wrap(S, `${top(S)}<main class="main ctr solo"><div class="lc">${heading}</div><div class="rc">
-<div><label class="l" for="pin">Practice code</label>${inp('pin', u.pin || '', { type: 'password', mode: 'numeric', ph: '6 digits', err: locked || badc, f: 'pin', enter: stopMode ? 'stopgo' : 'login' })}${errBlock}</div>${buttons}</div></main>`);
+<div><label class="l" for="pin">Practice code</label>${inp('pin', u.pin || '', { type: 'password', mode: 'numeric', ph: '6 digits', err: locked || badc, f: 'pin', enter: 'login' })}${errBlock}</div>${buttons}</div></main>`);
 }
 
 function s1email(S, locked) {
@@ -134,11 +135,13 @@ export function p0b(S) {
   let ft = '<div class="tr ft" role="row"><span class="b e" role="cell"></span><span role="cell"></span>';
   c.tiers.forEach((t, i) => { if (i > 0) ft += `<span role="cell" class="${i === gdIdx ? 'gd' : ''}">${t.plan ? a(i === gdIdx ? 'go' : 'btn2', 'choosetier', `Choose ${esc(t.name)}`, '', t.plan) : ''}</span>`; });
   ft += '</div>';
+  const fromP1 = S.p0bFrom === 'p1';
+  const backL = fromP1 ? `<a class="quiet p0b-up" href="#/p1">Back</a>` : '<a class="quiet p0b-up" href="#/p0">Back to why join</a>';
   return wrap(S, `${top(S, { right: stop })}<main class="main one" style="max-width: 1000px">
 <div class="p0b-hd" style="display: flex; flex-direction: column; gap: 8px"><div class="step">Compare the plans</div>${h1('Which plan suits you?')}
-<p class="help" style="margin: 0">Each plan side by side. Tap Choose under the one you want.</p><a class="quiet p0b-up" href="#/p0">Back to why join</a></div>
+<p class="help" style="margin: 0">Each plan side by side. Tap Choose under the one you want.</p>${backL}</div>
 <div class="tg" role="table" aria-label="Compare the plans">${th}${rows}${ft}</div>
-<a class="quiet p0b-dn" href="#/p0">Back to why join</a></main>`);
+${backL.replace('p0b-up', 'p0b-dn')}</main>`);
 }
 
 // ---------------------------------------------------------------- P1
@@ -252,11 +255,13 @@ export function p5(S) {
       : `We have sent your signed form and the benefits booklet to ${esc(r.masked_email)}. If it is not there in a few minutes, check your junk folder.`;
   // Vik 17 Nov 2026: no practice code here. Staff tap Done and are back on the start screen,
   // which shows the ref, the email result and the two Optix to-dos (S.done, set in ACT.next).
+  const plan = ((S.practice && S.practice.plans) || []).find((x) => x.code === P.plan) || {};
+  const famOk = !!plan.family && !P.no_email && !noEmail; // same plan and email: only for a family plan, and only if there is an email to keep
   return wrap(S, `${top(S)}<main class="main solo"><div class="lc">${h1(headline)}
 <p class="help">${copyLine}</p>
 <div class="box" style="font-size: 18px; line-height: 1.5"><b>Next:</b> a member of the team will set up your Direct Debit with you. Please hand the tablet back to them.</div>
 ${a('go', 'next', 'Done, back to the start')}
-${a('btn2', 'family', 'Sign up the next family member (same plan and email)')}</div></main>`);
+${famOk ? a('btn2', 'family', 'Sign up the next family member (same plan and email)') : ''}</div></main>`);
 }
 
 // ---------------------------------------------------------------- P6
@@ -269,7 +274,7 @@ export function p6(S) {
   const m = {
     half: ['This screen was cleared', 'Nothing was saved. Please ask the team if you would like to start again.'],
     emailed: ['This screen was cleared', 'The sign-up was finished and saved. Your copy is on its way.'],
-    noemail: ['This screen was cleared', 'The sign-up was finished and saved. Your copy is being printed.'],
+    noemail: ['This screen was cleared', 'The sign-up was finished and saved. The team will give you your copy.'],
     stopped: ['Sign-up stopped', 'Nothing was saved or sent.'],
   }[k.kind] || ['This screen was cleared', ''];
   return wrap(S, `${top(S)}<main class="main solo" style="justify-content: center"><div style="display: flex; flex-direction: column; gap: 22px">${h1(m[0])}
@@ -362,7 +367,7 @@ ${a('quiet', 'stafflist', 'Edit the staff list', ' style="justify-content: flex-
     const c = u.change;
     const opts = (d.staff || []).filter((s) => s.active).map((s) => `<option value="${esc(s.id)}"${s.id === c.staffId ? ' selected' : ''}>${esc(s.name)}</option>`).join('');
     change = `<section class="box" aria-label="Change who signed up" style="display: flex; flex-direction: column; gap: 14px"><h2>Change who signed up ${esc(c.patient)}</h2>
-<p style="margin: 0">Now: ${esc(c.staff)}. Use this when the wrong name was chosen on the tablet. The signed PDF still shows ${esc(c.staff)} as &quot;Signed up by&quot;; the counts and the payroll download use the new name. The change is recorded with your name, the time and the reason, and shows on the sign-up.</p>
+<p style="margin: 0">Now: ${esc(String(c.staff || '').replace(/\.$/, ''))}. Use this when the wrong name was chosen on the tablet. The signed PDF still shows ${esc(c.staff)} as &quot;Signed up by&quot;; the counts and the payroll download use the new name. The change is recorded with your name, the time and the reason, and shows on the sign-up.</p>
 ${d.paid ? `<div class="err" role="alert">${esc(month)} payroll has already been run. This change will show in next month&#39;s download as a correction.</div>` : ''}
 <div><label class="l" for="ns">Signed up by</label><select id="ns" class="in" data-f="change.staffId">${opts}</select></div>
 <div><label class="l" for="rs">Reason</label>${inp('rs', c.reason || '', { f: 'change.reason', ph: 'For example: wrong name chosen on the tablet', enter: 'changesave', err: !!c.err })}${c.err ? `<div id="rserr" class="err" role="alert">${esc(c.err)}</div>` : ''}</div>
@@ -420,6 +425,6 @@ ${u.sent ? `<div class="alert ok" role="status">${esc(u.sent)}</div>` : ''}${u.e
 ${rows && rows.length ? `<p class="sub" style="margin: 0">${rows.length === 1 ? '1 sign-up found' : `${rows.length} sign-ups found`}</p>
 <div class="rows" role="table" aria-label="Sign-ups found"><div class="row hd" role="row"><span role="columnheader">Signed</span><span role="columnheader">Patient</span><span role="columnheader">Plan</span><span role="columnheader">Status</span><span role="columnheader">Action</span></div>
 ${rows.map((r) => `<div class="row" role="row"><span role="cell"><span class="k">Signed</span>${esc(r.date)}</span><span role="cell"><span class="k">Patient</span>${esc(r.patient)}<br><span class="sub">Optix ${esc(r.optix)} · ${esc(r.ref)} · by ${esc(r.staff)}</span></span><span role="cell"><span class="k">Plan</span>${esc(r.plan_short)}</span><span role="cell"><span class="k">Status</span><span class="pill ${esc(r.tone)}">${esc(r.status)}</span></span>
-<span role="cell" style="display: flex; flex-direction: column; gap: 6px"><span class="k">Action</span>${a('btn2', 'openref', 'Open signed copy', ' style="min-height: 44px"', r.ref)}${a('stop', 'sendcopy', 'Send the patient a copy', ' style="justify-content: center"', r.ref)}</span></div>`).join('')}</div>` : ''}
+<span role="cell" style="display: flex; flex-direction: column; gap: 6px"><span class="k">Action</span>${a('btn2', 'openref', 'Open signed copy', ' style="min-height: 44px"', r.ref)}${r.status === 'Signed in error' ? '' : a('stop', 'sendcopy', 'Send the patient a copy', ' style="justify-content: center"', r.ref)}</span></div>`).join('')}</div>` : ''}
 ${conf}</main>`);
 }

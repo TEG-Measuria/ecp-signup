@@ -106,6 +106,7 @@ function monthData(month, pr) {
     by_staff: rows.length ? by_staff : [], total,
     each: rows.map((r) => ({ ref: r.ref, date: `${pad2(r.date.getDate())}/${pad2(r.date.getMonth() + 1)}/${r.date.getFullYear()}`, patient: first(r.patient), optix: r.optix, plan_short: planShort(r.plan), staff: sname(r.staffId), changed: r.changed })),
     staff: staff.map((s) => ({ ...s })), former: former.slice(),
+    hidden: staff.filter((s) => !s.active).map((s) => ({ id: s.id, name: s.name, had_signups: signups.some((r) => r.staffId === s.id) })), // as the live server: lets M1 "Put back on the tablet"
   };
 }
 
@@ -211,7 +212,7 @@ const R = {
     needSession(token, 'tablet'); const r = find(ref);
     if (!String(reason || '').trim()) throw ApiErr(400, 'invalid', 'Please give a reason.', { fields: { reason: 'Please give a reason.' } });
     r.void = true; const told = Q.get('voidfail') !== '1';
-    return told ? { ok: true, practice_told: true, message: 'Marked as signed in error. The practice inbox has been told.' } : { ok: true, practice_told: false, message: 'Marked as signed in error, but the practice inbox could not be told. Please tell the practice manager.' };
+    return told ? { ok: true, practice_told: true, message: 'Marked as signed in error. The practice has been told.' } : { ok: true, practice_told: false, message: 'Marked as signed in error, but the practice inbox could not be told. Please tell the practice manager.' };
   },
 
   async 'manager-login'({ code }) {
@@ -263,12 +264,15 @@ const R = {
     const n = String(name || '').trim();
     if (n.length < 2) throw ApiErr(400, 'invalid', 'Type a first name and surname initial, for example Pam T.', { fields: { name: 'Type a first name and surname initial, for example Pam T.' } });
     if (staff.some((s) => s.active && s.name.toLowerCase() === n.toLowerCase())) throw ApiErr(400, 'invalid', 'That name is already on the list.', { fields: { name: 'That name is already on the list.' } });
-    staffSeq += 1; staff.push({ id: `s${staffSeq}`, name: n, active: true });
+    const back = staff.find((s) => !s.active && s.name.toLowerCase() === n.toLowerCase()); // as the live server: a hidden name comes back
+    if (back) back.active = true; else { staffSeq += 1; staff.push({ id: `s${staffSeq}`, name: n, active: true }); }
     return { staff: staff.map((s) => ({ ...s })) };
   },
   async 'staff-hide'({ staff_id }, token) {
     needSession(token, 'manager');
-    const s = staff.find((x) => x.id === staff_id); if (s) { s.active = false; if (!former.includes(s.name)) former.push(s.name); }
+    const s = staff.find((x) => x.id === staff_id);
+    if (s && s.active && staff.filter((x) => x.active).length <= 1) throw ApiErr(400, 'last_name', 'At least one name has to stay on the tablet. Add the new name first, then take this one off.');
+    if (s) { s.active = false; if (!former.includes(s.name)) former.push(s.name); }
     return { staff: staff.map((x) => ({ ...x })) };
   },
   async download({ month, practice: pr }, token) {

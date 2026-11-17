@@ -29,7 +29,7 @@ const blankPt = () => ({ optix: '', staffId: '', staffName: '', plan: '', name: 
 const S = {
   route: '', q: {}, land: false, busy: false, brand: null, practice: null, staff: [], terms: null,
   session: null, expires: 0, mgr: null, msUnset: MS_CLIENT_ID.startsWith('__') && !MS_SIM,
-  pt: blankPt(), result: null, fam: null, idem: null, idemSig: '', staffUnlocked: false,
+  pt: blankPt(), result: null, fam: null, idem: null, idemSig: '', lastPt: null, p0bFrom: null, flowStarted: false,
   ui: {}, stash: null, stopFrom: null, p6: null, lastTap: Date.now(), flash: null, padAspect: 0.3,
 };
 const app = document.getElementById('app');
@@ -63,13 +63,18 @@ function doneNote() {
   return { bad: false, msg: `Sign-up ${r.ref} is saved and the signed copy is sent.${todo}` };
 }
 function wipePatient() {
-  S.pt = blankPt(); S.result = null; S.fam = null; S.idem = null; S.idemSig = ''; S.staffUnlocked = false; S.stash = null; S.stopFrom = null;
+  S.pt = blankPt(); S.result = null; S.fam = null; S.idem = null; S.idemSig = ''; S.stash = null; S.stopFrom = null; S.lastPt = null;
 }
 function logout(msg) {
   S.session = null; S.expires = 0; S.staff = []; S.practice = null; ls.del('ecp_session'); ls.del('ecp_exp');
   wipePatient(); S.flash = msg || null; go('s1');
 }
 function mgrOut() { S.mgr = null; if (S.route === 'm1' || S.route === 'm2') go('s1'); }
+// Leaving the manager area (any route, including browser back) signs the manager out, so coming back asks again.
+function mgrSignOut() { if (!S.mgr) return; api('sign-out', {}, 'manager').catch(() => {}); S.mgr = null; }
+// A patient sign-up is open on the tablet: from Hand to patient until Done / Stop / the screen clears (wipePatient).
+const inFlow = () => !!(S.result || (S.pt.optix && S.pt.staffId));
+const STAFF_ROUTES = new Set(['s1', 's2', 's3', 'm1', 'm2']);
 
 // ---------------------------------------------------------------- router
 function parseHash() {
@@ -80,6 +85,7 @@ function parseHash() {
   return { route: route || '', q };
 }
 let keep = false;
+let firstRoute = true;
 export function go(route, opts = {}) {
   keep = !!opts.keep;
   const h = `#/${route}`;
@@ -89,7 +95,7 @@ window.addEventListener('hashchange', () => onRoute());
 
 function initUi(route, q) {
   switch (route) {
-    case 's1': { const u = { pin: '', stop: 'stop' in q, stage: 'email', semail: '', scode: '' }; if (S.flash) { u.msg = S.flash; S.flash = null; } return u; }
+    case 's1': { const u = { pin: '', stop: 'stop' in q && !!S.stopFrom, stage: 'email', semail: '', scode: '' }; if (S.flash) { u.msg = S.flash; S.flash = null; } return u; }
     case 's2': { const u = { optix: '', staffId: S.fam ? S.fam.staffId : '' }; if (S.done) { u.done = S.done; S.done = null; } return u; }
     case 'm1': return { month: monthKey(new Date()), view: S.mgr && S.mgr.scope === 'group' ? 'group' : 'practice', pin: '' }; // a group sign-in always lands on the group summary
     case 'm2': return { q: '' };
@@ -104,15 +110,30 @@ async function onRoute() {
   if (!VIEWS[route]) { route = 's1'; history.replaceState(null, '', '#/s1'); }
   if (MOCK) { await seedMock(route, q); mockUi(route, q); if ((route === 'm1' || route === 'm2') && q.as && !S.mgr) { const r = await call('manager-login', { code: q.as === 'group' ? '999999' : '654321', device }); S.mgr = { token: r.session, scope: r.scope, practice: r.practice || null, label: r.label }; S.lastTap = Date.now(); } }
   // guards
+  const first = firstRoute; firstRoute = false;
+  const to = (r) => { history.replaceState(null, '', `#/${r}`); route = r; q = {}; };
+  if (S.mgr && route !== 'm1' && route !== 'm2') mgrSignOut();
+  if (S.route === 's1' && S.stopFrom && PATIENT.has(route)) { S.ui = S.stash || {}; keep = true; S.stopFrom = null; } // browser back out of "Stop this sign-up?"
   const needSession = PATIENT.has(route) || route === 's2' || route === 's3';
   if (needSession && !S.session) { history.replaceState(null, '', '#/s1'); route = 's1'; q = {}; }
-  else if (route === 'p2' || route === 'p3') { if (!S.pt.plan) { history.replaceState(null, '', '#/p1'); route = 'p1'; } }
+  else if (inFlow() && STAFF_ROUTES.has(route) && !(route === 's1' && 'stop' in q && S.stopFrom && !S.result)) {
+    // The patient holds the tablet: never step back into staff screens. Staff leave only by Stop or Done on P5.
+    const back = S.result ? 'p5' : (S.lastPt || 'p0');
+    if (S.route === 's1' && S.stopFrom) { S.ui = S.stash || {}; S.stopFrom = null; keep = true; } else if (S.route === back) keep = true;
+    to(back);
+  } else if (S.result && PATIENT.has(route) && route !== 'p5') { keep = S.route === 'p5'; to('p5'); } // saved: no way back into the form (no second sign-up)
+  else if (!inFlow() && PATIENT.has(route) && route !== 'p5') {
+    // Reload or a direct link mid sign-up: the Optix ID and staff name are gone, so start again from the start screen.
+    if (first) S.done = { bad: true, msg: 'The sign-up was interrupted. Please start it again.' };
+    to('s2');
+  } else if (route === 'p2' || route === 'p3') { if (!S.pt.plan) { history.replaceState(null, '', '#/p1'); route = 'p1'; } }
   else if (route === 'p4') { if (!S.pt.plan) { history.replaceState(null, '', '#/p1'); route = 'p1'; } else if (!S.pt.addr1) { history.replaceState(null, '', '#/p3'); route = 'p3'; } }
   else if (route === 'p5' && !S.result) { history.replaceState(null, '', '#/s2'); route = 's2'; }
   else if (route === 'm2' && !S.mgr) { history.replaceState(null, '', '#/m1'); route = 'm1'; }
   if (route === 'p6' && !S.p6) S.p6 = { kind: 'half' };
   if (route === 'p6' && q.k) S.p6 = { kind: { ask: 'ask', half: 'half', emailed: 'emailed', noemail: 'noemail', stopped: 'stopped' }[q.k] || 'half', askAt: Date.now(), from: 'p0' };
-  if (PATIENT.has(route) && route !== 'p5') S.staffUnlocked = false;
+  if (route === 'p0b' && S.route !== 'p0b') S.p0bFrom = S.route === 'p1' ? 'p1' : 'p0';
+  if (PATIENT.has(route)) S.lastPt = route;
   S.route = route; S.q = q;
   if (!keep) S.ui = initUi(route, q);
   keep = false;
@@ -173,7 +194,8 @@ function startAsk() {
 function clearScreen() {
   const signed = !!S.result;
   const kind = signed ? (S.result.patient_copy === 'sent' ? 'emailed' : 'noemail') : 'half';
-  wipePatient();
+  const d = doneNote(); // the start screen still shows the ref, the email result and the Optix to-dos after "Staff: start again"
+  wipePatient(); if (d) S.done = d;
   S.p6 = { kind };
   go('p6');
 }
@@ -181,7 +203,7 @@ setInterval(() => {
   const now = Date.now();
   if (S.session && S.expires && now > S.expires) { logout('Your sign-in ended at 8pm. Please sign in again.'); return; }
   const r = S.route;
-  if ((r === 'm1' || r === 'm2') && S.mgr && now - S.lastTap > T.mgr) { api('sign-out', {}, 'manager').catch(() => {}); S.mgr = null; go('s1'); return; }
+  if ((r === 'm1' || r === 'm2') && S.mgr && now - S.lastTap > T.mgr) { mgrSignOut(); S.flash = 'Signed out after 15 minutes without use.'; go('s1'); return; }
   const inStop = r === 's1' && S.ui.stop && S.stopFrom;
   if (PATIENT.has(r) || inStop) {
     const base = inStop ? S.stopFrom : r;
@@ -242,7 +264,7 @@ function padPng() {
 }
 
 // ---------------------------------------------------------------- P4 helpers
-function payload(forSig) {
+function payload() {
   const P = S.pt, typed = P.sigMethod === 'type';
   const o = {
     optix: P.optix, staff_id: P.staffId, plan: P.plan, name: P.name.trim(), u16: !!P.u16, parent: P.u16 ? P.parent.trim() : '',
@@ -251,12 +273,14 @@ function payload(forSig) {
     sig_method: P.sigMethod, sig_typed: typed ? P.typed.trim() : '', terms_version_id: S.terms ? S.terms.id : null,
     terms_accepted_at: P.termsAt, ticked_at: P.tickedAt, prev_ref: P.prevRef || null,
   };
-  if (forSig) return JSON.stringify(o);
   o.sig_png = typed ? '' : padPng();
   return o;
 }
+// One key per patient attempt: a retry, a new tick time or a redrawn signature reuses it, so the server never stores a second sign-up.
+// A new key only after wipePatient, or if the Optix ID, plan or the patient (name, under 16, parent) changes.
 function enterP4() {
-  const sig = payload(true);
+  const P = S.pt;
+  const sig = JSON.stringify([P.optix, P.staffId, P.plan, P.name.trim().toLowerCase(), !!P.u16, P.u16 ? P.parent.trim().toLowerCase() : '', P.prevRef || '']);
   if (!S.idem || S.idemSig !== sig) { S.idem = rand(); S.idemSig = sig; }
 }
 
@@ -326,7 +350,7 @@ const ACT = {
   // ---- S1
   async login() {
     const u = S.ui; u.bad = false; u.msg = '';
-    if (!u.pin) { u.bad = true; render({ focusId: 'pin' }); return; }
+    if (!u.pin) { u.bad = true; u.msg = 'Enter the code.'; render({ focusId: 'pin' }); return; }
     setBusy(true);
     try {
       const r = await call('tablet-login', { code: u.pin, device });
@@ -335,7 +359,8 @@ const ACT = {
       setBusy(false); setSession(r); u.pin = ''; go('s2');
     } catch (e) {
       setBusy(false); u.pin = '';
-      if (e.code === 'locked') { u.locked = true; u.msg = e.message; setTimeout(() => { if (S.route === 's1') { S.ui.locked = false; S.ui.msg = ''; render(); } }, (e.body.retry_after_s || 300) * 1000); }
+      // locks are per route: a lock on the practice code never blocks the practice email (and the other way round)
+      if (e.code === 'locked') { u.lockedPin = true; u.msg = e.message; setTimeout(() => { if (S.route === 's1') { S.ui.lockedPin = false; if (S.ui.stage === 'pin') S.ui.msg = ''; render(); } }, (e.body.retry_after_s || 300) * 1000); }
       else if (e.code === 'bad_code') u.bad = true; else if (e.code === 'closed') { u.bad = true; u.msg = e.message; }
       else if (e.code === 'use_email') { S.fallback = false; u.stage = 'email'; u.msg = e.message; render({ focusId: 'semail' }); return; } else u.msg = e.message;
       render({ focusId: 'pin' });
@@ -358,14 +383,14 @@ const ACT = {
   },
   async codelogin() {
     const u = S.ui; u.bad = false; u.msg = '';
-    if (!/^\d{6}$/.test((u.scode || '').trim())) { u.bad = true; u.msg = 'Enter the 6-digit code from the email.'; render({ focusId: 'scode' }); return; }
+    if (!/^\d{6}$/.test((u.scode || '').trim())) { u.bad = true; u.msg = (u.scode || '').trim() ? 'Enter the 6-digit code from the email.' : 'Enter the code.'; render({ focusId: 'scode' }); return; }
     setBusy(true);
     try {
       const r = await call('email-login', { practice: u.codePractice, code: u.scode.trim(), device });
       setBusy(false); setSession(r); u.scode = ''; go('s2');
     } catch (e) {
       setBusy(false); u.scode = '';
-      if (e.code === 'locked') { u.locked = true; u.msg = e.message; setTimeout(() => { if (S.route === 's1') { S.ui.locked = false; S.ui.msg = ''; render(); } }, (e.body.retry_after_s || 300) * 1000); }
+      if (e.code === 'locked') { u.lockedEmail = true; u.msg = e.message; setTimeout(() => { if (S.route === 's1') { S.ui.lockedEmail = false; if (S.ui.stage !== 'pin') S.ui.msg = ''; render(); } }, (e.body.retry_after_s || 300) * 1000); }
       else { u.bad = true; u.msg = e.message; }
       render({ focusId: 'scode' });
     }
@@ -392,18 +417,8 @@ const ACT = {
   },
   tabletsdone() { S.ui.tabs = null; render(); },
   stop() { S.stopFrom = S.route; S.stash = S.ui; keep = false; },
-  async stopgo() {
-    const u = S.ui; u.bad = false; u.msg = '';
-    if (!u.pin) { u.bad = true; render({ focusId: 'pin' }); return; }
-    setBusy(true);
-    try { await api('verify-code', { code: u.pin }); setBusy(false); wipePatient(); S.p6 = { kind: 'stopped' }; go('p6'); }
-    catch (e) {
-      setBusy(false); u.pin = '';
-      if (e.handled) return;
-      if (e.code === 'locked') { u.locked = true; u.msg = e.message; } else if (e.code === 'bad_code') u.bad = true; else u.msg = e.message;
-      render({ focusId: 'pin' });
-    }
-  },
+  // Stop needs no code (Vik 17 Nov 2026): staff hold the signed-in tablet, and they mostly don't know the practice code.
+  stopgo() { wipePatient(); S.p6 = { kind: 'stopped' }; go('p6'); },
   stopback() { S.ui = S.stash || {}; const back = S.stopFrom || 'p0'; S.stopFrom = null; go(back, { keep: true }); },
   signout() { const wasS = S.session; if (wasS) api('sign-out', {}).catch(() => {}); S.session = null; S.practice = null; ls.del('ecp_session'); ls.del('ecp_exp'); wipePatient(); S.staff = []; },
   // ---- S2
@@ -416,7 +431,7 @@ const ACT = {
     if (u.badId || u.noName) { render({ focusId: u.badId ? 'optix' : null }); return; }
     const st = S.staff.find((x) => x.id === u.staffId);
     const fam = S.fam;
-    S.pt = blankPt(); S.result = null; S.idem = null; S.staffUnlocked = false;
+    S.pt = blankPt(); S.result = null; S.idem = null; S.idemSig = ''; S.flowStarted = true;
     Object.assign(S.pt, { optix, staffId: u.staffId, staffName: st ? st.name : '' });
     S.stopFrom = null;
     if (fam) {
@@ -448,8 +463,8 @@ const ACT = {
     if (u.noTick || u.noSig) { render(); if (u.noTick) { const el = document.querySelector('.check input'); if (el) el.focus(); } return; }
     u.failed = false; setBusy(true); render();
     try {
-      const res = await api('submit', { idempotency_key: S.idem, ...payload(false) });
-      setBusy(false); S.result = res; S.staffUnlocked = false; S.stash = null; go('p5');
+      const res = await api('submit', { idempotency_key: S.idem, ...payload() });
+      setBusy(false); S.result = res; S.stash = null; go('p5');
     } catch (e) {
       setBusy(false);
       if (e.handled) return;
@@ -457,23 +472,6 @@ const ACT = {
     }
   },
   // ---- P5
-  staffask() { S.ui.askCode = true; S.ui.pin = ''; S.ui.perr = ''; render({ focusId: 'pin' }); },
-  staffcancel() { S.ui.askCode = false; render(); },
-  async staffgo() {
-    const u = S.ui; u.perr = '';
-    if (!u.pin) { u.perr = 'Enter the practice code.'; render({ focusId: 'pin' }); return; }
-    setBusy(true);
-    try { await api('verify-code', { code: u.pin }); setBusy(false); S.staffUnlocked = true; u.askCode = false; u.pin = ''; render({ focusH1: true }); }
-    catch (e) { setBusy(false); u.pin = ''; if (e.handled) return; u.perr = e.message; render({ focusId: 'pin' }); }
-  },
-  async p5retry() {
-    const u = S.ui; u.perr = ''; setBusy(true);
-    try {
-      const r = await api('resend', { ref: S.result.ref });
-      setBusy(false); S.result.patient_copy = 'sent'; S.result.masked_email = r.masked_email; u.note = `Sent again to ${r.masked_email} at ${r.at}.`; render();
-    } catch (e) { setBusy(false); if (e.handled) return; u.perr = e.message; render(); }
-  },
-  async p5print() { try { await openUrl(api('pdf', { ref: S.result.ref })); S.ui.note = 'Opened the signed copy to print.'; S.ui.perr = ''; } catch (e) { if (!e.handled) S.ui.perr = e.message; } render(); },
   next() { const d = doneNote(); wipePatient(); S.done = d; go('s2'); },
   family() {
     // To S2 first (the board asks for the Optix ID only there). S2's Hand to patient then goes straight to P3, keeping staff name, plan, email, terms-accepted time and prev_ref.
@@ -516,22 +514,22 @@ const ACT = {
     setBusy(true);
     try {
       const r = await api('void', { ref: v.ref, reason: v.reason.trim() }); setBusy(false); S.ui.void = null;
-      if (r && r.practice_told === false) { S.ui.error = r.message || 'Marked as signed in error, but the practice inbox could not be told. Please tell the practice manager.'; await loadToday(); } else go('s2');
+      if (r && r.practice_told === false) { S.ui.error = r.message || 'Marked as signed in error, but the practice inbox could not be told. Please tell the practice manager.'; await loadToday(); } else { S.done = { bad: false, msg: (r && r.message) || 'Marked as signed in error. The practice has been told.' }; go('s2'); }
     }
     catch (e) { setBusy(false); if (!e.handled) { v.err = e.message; render({ focusId: 'why' }); } }
   },
   modalcancel() { const u = S.ui; u.fix = null; u.void = null; u.change = null; u.confirm = null; render(); },
   // ---- Manager
   async mcodego() {
-    const u = S.ui; u.bad = false; u.msg = '';
-    if (!u.pin) { u.bad = true; render({ focusId: 'mpin' }); return; }
+    const u = S.ui; u.bad = false; u.msg = ''; u.mbad = false; u.mmsg = '';
+    if (!u.pin) { u.bad = true; u.msg = 'Enter the code.'; render({ focusId: 'mpin' }); return; }
     setBusy(true);
     try { const r = await call('manager-login', { code: u.pin, device }); setBusy(false); await mgrIn(r); }
     catch (e) { setBusy(false); u.pin = ''; u.bad = true; u.msg = e.code === 'locked' ? e.message : e.code === 'bad_code' ? '' : e.message; render({ focusId: 'mpin' }); }
   },
   // ---- Manager: a code emailed to the manager's own address (Vik, 15 Nov 2026)
   async mesend() {
-    const u = S.ui; u.mbad = false; u.mmsg = '';
+    const u = S.ui; u.mbad = false; u.mmsg = ''; u.bad = false; u.msg = ''; // a stale manager-code error goes once the email route is used
     const email = (u.memail || '').trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { u.mbad = true; u.mmsg = 'Please enter your email address.'; render({ focusId: 'memail' }); return; }
     setBusy(true);
@@ -547,14 +545,14 @@ const ACT = {
     }
   },
   async mecodego() {
-    const u = S.ui; u.mbad = false; u.mmsg = '';
-    if (!/^\d{6}$/.test((u.mecode || '').trim())) { u.mbad = true; u.mmsg = 'Enter the 6-digit code from the email.'; render({ focusId: 'mecode' }); return; }
+    const u = S.ui; u.mbad = false; u.mmsg = ''; u.bad = false; u.msg = '';
+    if (!/^\d{6}$/.test((u.mecode || '').trim())) { u.mbad = true; u.mmsg = (u.mecode || '').trim() ? 'Enter the 6-digit code from the email.' : 'Enter the code.'; render({ focusId: 'mecode' }); return; }
     setBusy(true);
     try { const r = await call('manager-email-login', { email: (u.memail || '').trim(), code: u.mecode.trim(), device }); setBusy(false); u.mecode = ''; u.mstage = ''; await mgrIn(r); }
     catch (e) { setBusy(false); u.mecode = ''; u.mbad = true; u.mmsg = e.message; render({ focusId: 'mecode' }); }
   },
   menewcode() { ACT.mesend(); },
-  meother() { const u = S.ui; u.mstage = ''; u.mmsg = ''; u.mbad = false; render({ focusId: 'memail' }); },
+  meother() { const u = S.ui; u.mstage = ''; u.mmsg = ''; u.mbad = false; u.bad = false; u.msg = ''; render({ focusId: 'memail' }); },
   async msgo() {
     if (MS_SIM) {
       setBusy(true);
@@ -567,7 +565,7 @@ const ACT = {
     const p = new URLSearchParams({ client_id: MS_CLIENT_ID, response_type: 'id_token', response_mode: 'fragment', scope: 'openid profile email', redirect_uri: location.origin + location.pathname, nonce, state, prompt: 'select_account' });
     location.assign(`https://login.microsoftonline.com/${encodeURIComponent(MS_TENANT_ID)}/oauth2/v2.0/authorize?${p}`);
   },
-  mgrout() { api('sign-out', {}, 'manager').catch(() => {}); S.mgr = null; },
+  mgrout() { mgrSignOut(); },
   async month(arg) {
     const u = S.ui;
     const [y, m] = u.month.split('-').map(Number);
@@ -586,15 +584,14 @@ const ACT = {
   },
   changeopen(ref) {
     const e = S.ui.data.each.find((x) => x.ref === ref); const act = (S.ui.data.staff || []).filter((s) => s.active);
-    const cur = act.find((s) => s.name === e.staff);
-    const other = act.find((s) => !cur || s.id !== cur.id);
-    S.ui.change = { ref, patient: e.patient, staff: e.staff, staffId: other ? other.id : '', reason: '' }; S.ui.done = ''; render({ focusId: 'ns' });
+    const cur = act.find((s) => s.name === e.staff) || act[0]; // the list opens on the person it counts for now
+    S.ui.change = { ref, patient: e.patient, staff: e.staff, staffId: cur ? cur.id : '', reason: '' }; S.ui.done = ''; render({ focusId: 'ns' });
   },
   async changesave() {
     const c = S.ui.change;
     if (!(c.reason || '').trim()) { c.err = 'Please give a reason, so the record shows why.'; render({ focusId: 'rs' }); return; }
     setBusy(true);
-    try { const r = await api('change-staff', { ref: c.ref, staff_id: c.staffId, reason: c.reason.trim() }, 'manager'); setBusy(false); S.ui.change = null; S.ui.done = r.msg; await loadM1(); }
+    try { const r = await api('change-staff', { ref: c.ref, staff_id: c.staffId, reason: c.reason.trim() }, 'manager'); setBusy(false); S.ui.change = null; S.ui.done = String(r.msg || '').replace(/\.\.+/g, '.'); await loadM1(); }
     catch (e) { setBusy(false); if (!e.handled) { c.err = e.message; render({ focusId: 'rs' }); } }
   },
   stafflist() { S.ui.list = { name: '' }; S.ui.done = ''; render({ focusId: 'nn' }); },
@@ -689,22 +686,26 @@ app.addEventListener('change', (ev) => {
 
 // ---------------------------------------------------------------- mock-only helpers (deep links used by STATES.md)
 async function seedMock(route, q) {
-  if (!['s2', 's3', 'p0', 'p0b', 'p1', 'p2', 'p3', 'p4', 'p5'].includes(route) || S.session) return;
+  if (!(['s2', 's3', 'p0', 'p0b', 'p1', 'p2', 'p3', 'p4', 'p5'].includes(route) || (route === 's1' && 'stop' in q)) || S.session) return;
   const r = await call('tablet-login', { code: '123456', device }); setSession(r);
 }
 function mockUi(route, q) {
   const P = S.pt, v = q.v || '';
   S.busy = route === 'p4' && v === 'saving';
-  if (route === 's1') { if (v === 'wrong') S.ui.bad = true; if (v === 'locked') { S.ui.locked = true; S.ui.msg = 'Too many tries. Please wait 5 minutes, or ask the practice manager.'; } }
+  if (route === 's1') { if (v === 'wrong') { S.ui.stage = 'pin'; S.ui.bad = true; } if (v === 'locked') { S.ui.stage = 'pin'; S.ui.lockedPin = true; S.ui.msg = 'Too many tries. Please wait 5 minutes, or ask the practice manager.'; } }
   if (route === 'm1' && v === 'wrong') { S.ui.bad = true; }
+  // deep link s1?stop on a fresh load: pretend a sign-up was open on P0, so the stop board shows
+  if (route === 's1' && 'stop' in q && !S.stopFrom && !S.flowStarted && S.session) { S.stopFrom = 'p0'; Object.assign(P, { optix: '10234', staffId: 's2', staffName: 'Dillon R.' }); }
   if (route === 's2') { if (v === 'badid') { S.ui.badId = true; S.ui.optix = '12O456'; } if (v === 'noname') { S.ui.noName = true; } }
   if (route === 'p1' && v === 'none') { P.plan = ''; S.ui.none = true; }
   if (route === 'p2' && v === 'terms') S.ui.terms = true;
   if (route === 'p6' && v) { /* see q.k */ }
   if (!S.session) return;
+  // Deep links invent the patient only on a fresh load, before any real Hand to patient (then click paths behave as live). &noseed=1 turns it off.
+  if (S.flowStarted || Q.get('noseed') === '1') return;
   if (['p2', 'p3', 'p4', 'p5'].includes(route) && !P.plan) P.plan = q.plan || 'gold';
   if (q.plan && PATIENT.has(route)) P.plan = q.plan;
-  if (['p3', 'p4', 'p5'].includes(route) && !P.optix && !P.prevRef) { P.optix = '10234'; P.staffId = 's2'; P.staffName = 'Dillon R.'; P.termsAt = P.termsAt || new Date().toISOString(); }
+  if (PATIENT.has(route) && !P.optix && !P.prevRef) { P.optix = '10234'; P.staffId = 's2'; P.staffName = 'Dillon R.'; if (!['p0', 'p0b', 'p1'].includes(route)) P.termsAt = P.termsAt || new Date().toISOString(); }
   const fill = () => Object.assign(P, { name: 'Jane Sample', addr1: '1 Example Street', town: 'Loughborough', postcode: 'LE11 2PY', mobile: '07700 900123', email: 'jane.sample@example.test', email2: 'jane.sample@example.test' });
   if (route === 'p3' && !P.addr1 && (v === 'u16' || v === 'noemail' || v === 'mismatch')) {
     fill();
@@ -727,8 +728,7 @@ function mockUi(route, q) {
     P.name = P.name || 'Jane Sample'; P.email = P.email || 'jane.sample@example.test';
     if (v === 'u16') { P.u16 = true; P.parent = 'Pat Sample'; }
     S.result = { ref: 'ECP-CG-0142', signed_at: new Date().toISOString(), masked_email: 'j•••@e•••.test', patient_copy: v === 'failed' ? 'failed' : v === 'noemail' ? 'no_email' : 'sent', practice_copy: 'sent' };
-    if (v === 'noemail') P.no_email = true;
-    S.staffUnlocked = ['staff', 'failed', 'noemail'].includes(v);
+    if (v === 'noemail') { P.no_email = true; P.email = ''; }
   }
   if (route === 'p6' && q.k === 'ask') { S.p6.left = T.ask; }
 }
