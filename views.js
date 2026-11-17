@@ -148,11 +148,12 @@ ${backL.replace('p0b-up', 'p0b-dn')}</main>`);
 export function p1(S) {
   const p = S.practice, cur = S.pt.plan;
   const none = !cur;
+  const warn = none && S.ui.none; // red warning only after "Continue" is tapped with no plan (Vik walk 17 Nov)
   const plan = p.plans.find((x) => x.code === cur);
   const opts = p.plans.map((x) => `<label class="choice${x.code === cur ? ' on' : ''}"><input class="sr" type="radio" name="plan" value="${esc(x.code)}" data-f="plan"${x.code === cur ? ' checked' : ''}><span class="k" aria-hidden="true"></span><span><span class="t">${esc(x.name)}${x.best ? ' <span class="tagb">Best value</span>' : ''}</span><span class="d" style="display: block">${esc(x.desc)}</span></span><span class="pr">${esc(x.price)}<small>a month</small></span></label>`).join('');
   return wrap(S, `${top(S, { right: stop })}${bar('25%')}<main class="main abc"><div class="ga">
 <div class="step">Step 1 of 4</div>${h1('Choose your Eyecare Plan')}<p class="help">Pick one. You can upgrade at any time.</p>
-${none ? '<div class="alert bad" role="alert">Please choose a plan to carry on.</div>' : ''}</div><div class="gb">
+${warn ? '<div class="alert bad" role="alert">Please choose a plan to carry on.</div>' : ''}</div><div class="gb">
 <fieldset style="border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px"><legend class="sr">Plans</legend>${opts}</fieldset></div><div class="gc">
 <p class="sub" style="margin: 0">Family cover: each person covered has their own quick sign-up, one after another. We keep the plan and email for the next one.</p>
 <a class="btn2" href="#/p0b">Compare the plans side by side</a>

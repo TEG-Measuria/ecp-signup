@@ -167,6 +167,18 @@ function render(o = {}) {
   document.title = 'Eyecare Plan sign-up';
   app.innerHTML = VIEWS[S.route](S);
   if (S.route === 'p4') initPad();
+  // Green "sign-up saved" note on the start screen fades out after a few seconds (Vik, 17 Nov). Red notes stay.
+  if (S.route === 's2' && S.ui.done && !S.ui.done.bad && !S.ui.doneT) {
+    const ui = S.ui;
+    ui.doneT = setTimeout(() => {
+      if (S.ui !== ui || S.route !== 's2') return;
+      ui.done = null;
+      const el = app.querySelector('.alert.ok');
+      if (!el) return;
+      el.style.transition = 'opacity .6s ease'; el.style.opacity = '0';
+      setTimeout(() => { if (S.ui === ui && el.isConnected) el.remove(); }, 650);
+    }, 6000);
+  }
   if (o.focusId) { const el = document.getElementById(o.focusId); if (el) el.focus(); }
   else if (o.focusH1) { const h = app.querySelector('h1'); if (h) h.focus({ preventScroll: false }); window.scrollTo(0, 0); }
   else if (had) {
